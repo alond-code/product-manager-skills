@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quest Diagnostics × Vim Connect — Test Recommendations Demo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,sans-serif}
+  .ehr-view{overflow:hidden;height:100vh}
+  textarea,button,input,select{font-family:inherit}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes panelSlide{from{transform:translateX(100%)}to{transform:translateX(0)}}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState}=React;
+
+const PT={name:"Robert Chen",dob:"03/15/1964",age:62,gender:"Male",ins:"Medicare Part B",mrn:"4471839"};
+
+// Patient chart data that Vim reads from the EHR
+const VITALS=[
+  {date:"Apr 14, 2026",bp:"158/96",hr:"78",note:""},
+  {date:"Mar 10, 2026",bp:"152/94",hr:"74",note:""},
+  {date:"Feb 05, 2026",bp:"156/98",hr:"80",note:""},
+  {date:"Jan 08, 2026",bp:"148/92",hr:"76",note:""},
+  {date:"Nov 12, 2025",bp:"150/94",hr:"72",note:""},
+];
+const MEDS=[
+  {name:"Amlodipine",dose:"10mg",freq:"Daily",since:"2023"},
+  {name:"Lisinopril",dose:"40mg",freq:"Daily",since:"2022"},
+  {name:"Hydrochlorothiazide",dose:"25mg",freq:"Daily",since:"2024"},
+  {name:"Metformin",dose:"500mg",freq:"BID",since:"2021"},
+];
+const PROBLEMS=[
+  {code:"I10",desc:"Essential hypertension",status:"Active",since:"2020"},
+  {code:"E11.9",desc:"Type 2 diabetes mellitus",status:"Active",since:"2021"},
+  {code:"E78.5",desc:"Hyperlipidemia, unspecified",status:"Active",since:"2019"},
+];
+const PRIOR_LABS=[
+  {test:"Basic Metabolic Panel",date:"Mar 10, 2026",result:"Normal",detail:"K: 3.4 mEq/L (low-normal), Na: 142 mEq/L"},
+  {test:"HbA1c",date:"Mar 10, 2026",result:"6.8%",detail:"Slightly above target"},
+  {test:"Lipid Panel",date:"Jan 08, 2026",result:"LDL 118",detail:"Borderline high"},
+];
+
+// The recommendation Quest's rules engine would generate
+const RECOMMENDATION={
+  title:"Primary Aldosteronism Screening",
+  subtitle:"Consider ordering: Plasma Renin Activity (PRA) Reflex to Aldosterone",
+  guideline:"2025 Endocrine Society Clinical Practice Guideline",
+  guidelineNote:"All patients with hypertension should be screened for primary aldosteronism (PA).",
+  severity:"high",
+  testName:"Plasma Renin Activity (PRA) Reflex to Aldosterone, LC/MS/MS",
+  testCode:"13817",
+  cpt:"84244",
+  triggers:[
+    {label:"Persistent hypertension",detail:"BP consistently >150/90 across 5 visits despite 3 antihypertensives (including diuretic)",icon:"\u2764\uFE0F"},
+    {label:"3 antihypertensive medications",detail:"Amlodipine 10mg + Lisinopril 40mg + HCTZ 25mg \u2014 meets criteria for resistant hypertension",icon:"\uD83D\uDC8A"},
+    {label:"Low-normal potassium",detail:"K: 3.4 mEq/L on most recent BMP \u2014 may indicate aldosterone excess",icon:"\u26A0\uFE0F"},
+    {label:"No prior PA screening",detail:"No aldosterone or renin testing in patient history",icon:"\uD83D\uDD0D"},
+  ],
+  stats:{
+    prevalence:"Up to 30% of hypertensive patients have PA",
+    screening:"<1% of hypertensive patients are screened",
+    population:"~120M Americans are hypertensive",
+  },
+  risks:["Heart failure","Stroke","Atrial fibrillation","Kidney disease","Type 2 diabetes","Myocardial infarction"],
+  considerations:["Assess potassium levels if not performed recently","Patient should cease MRA or ENaC inhibitor use 4 weeks prior to testing","Morning blood draw recommended"],
+};
+
+// Additional recommendation (lower priority)
+const REC2={
+  title:"Microalbumin/Creatinine Ratio",
+  subtitle:"Annual diabetic nephropathy screening recommended",
+  guideline:"ADA Standards of Care 2026",
+  severity:"medium",
+  testName:"Microalbumin/Creatinine Ratio, Random Urine",
+  testCode:"11082",
+  cpt:"82043",
+  triggers:[
+    {label:"Type 2 diabetes (active since 2021)",detail:"Annual screening for diabetic nephropathy recommended per ADA guidelines",icon:"\uD83D\uDC8A"},
+    {label:"No urine albumin test in 14 months",detail:"Last screening: Feb 2025",icon:"\uD83D\uDD0D"},
+  ],
+};
+
+const H=({s})=><svg width={s||20} height={s||20} viewBox="0 0 24 24" fill="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#4FC3F7"/></svg>;
+const Q=({s})=><svg width={s||28} height={s||28} viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" fill="#006B3F"/><text x="14" y="18.5" textAnchor="middle" fill="white" fontSize="13" fontWeight="700" fontFamily="Georgia,serif">Q</text></svg>;
+const Ch=()=><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="#2E7D32"/><path d="M5 8l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+const Ge=({s,c})=><svg width={s||20} height={s||20} viewBox="0 0 24 24" fill="none" stroke={c||"#64748B"} strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+
+function Overview({go}){
+  return <div style={{maxWidth:780,margin:"0 auto",padding:"40px 24px",fontFamily:"Georgia,serif"}}>
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:32}}>
+      <Q/><span style={{fontSize:13,fontWeight:600,color:"#006B3F",letterSpacing:1,textTransform:"uppercase"}}>Quest Diagnostics</span>
+      <span style={{color:"#CBD5E1",margin:"0 4px"}}>&times;</span>
+      <H/><span style={{fontSize:13,fontWeight:600,color:"#0288D1",letterSpacing:1,textTransform:"uppercase"}}>Vim Connect</span>
+    </div>
+    <div style={{background:"#0F172A",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:36}}>
+      <div>
+        <div style={{fontSize:18,fontWeight:700,color:"white",marginBottom:4}}>Interactive Demo</div>
+        <div style={{fontSize:13,color:"#94A3B8",fontFamily:"system-ui,sans-serif"}}>See how Quest surfaces a PA screening recommendation based on a patient's chart data.</div>
+      </div>
+      <button onClick={go} style={{background:"#006B3F",color:"white",border:"none",borderRadius:8,padding:"12px 28px",fontSize:14,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"system-ui,sans-serif"}}>Launch Demo &rarr;</button>
+    </div>
+    <h1 style={{fontSize:32,fontWeight:700,color:"#0F172A",lineHeight:1.25,margin:"0 0 8px"}}>Test Recommendations &mdash; Guidelines-Based Clinical Decision Support</h1>
+    <p style={{fontSize:17,color:"#475569",lineHeight:1.65,margin:"0 0 36px"}}>A Vim Connect application that uses rules-based logic (no AI) to analyze patient chart data against medical guidelines and proactively recommend lab tests the provider may not have considered &mdash; with the option to draft the order directly from the Vim overlay.</p>
+
+    <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"20px 24px",marginBottom:36}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#C2410C",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>The Problem</div>
+      <p style={{fontSize:15,color:"#7C2D12",lineHeight:1.6,margin:0}}>Medical guidelines are constantly evolving, and providers can't keep up with every recommendation for every condition. For example, the <strong>2025 Endocrine Society guidelines</strong> now recommend that all hypertensive patients be screened for primary aldosteronism (PA) &mdash; yet <strong>fewer than 1% are screened</strong>, despite PA affecting up to 30% of hypertensive patients. The data needed to trigger these recommendations (blood pressure readings, medications, prior labs) already exists in the EHR &mdash; but no one is connecting the dots in real-time at the point of care.</p>
+    </div>
+
+    <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:10,padding:"20px 24px",marginBottom:36}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#166534",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>The Solution</div>
+      <p style={{fontSize:15,color:"#14532D",lineHeight:1.6,margin:0}}>Quest's <strong>Test Recommendations</strong> app runs through the Vim Connect ribbon. When a provider opens a patient's chart, Vim reads the relevant EHR data &mdash; vitals, medications, problem list, and prior lab history. Quest's rules engine checks this data against clear, black-and-white medical guidelines (no AI) and surfaces targeted recommendations like <strong>"Consider ordering: Plasma Renin Activity (PRA) Reflex to Aldosterone."</strong> The provider sees the clinical rationale, the guideline reference, and can start drafting the order directly from the Vim overlay &mdash; with writeback to the EHR.</p>
+    </div>
+
+    <h2 style={{fontSize:22,fontWeight:700,color:"#0F172A",margin:"0 0 16px"}}>How It Works</h2>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:36}}>
+      {[
+        {s:"1",t:"Provider Opens Patient Chart",d:"The provider opens a patient\u2019s record during an encounter. Vim reads vitals, medication list, problem list, and prior lab results via the Patient and Encounter Workflow resources."},
+        {s:"2",t:"Rules Engine Evaluates Guidelines",d:"Quest\u2019s rules-based engine (no AI) checks the patient\u2019s data against published medical guidelines. Rules are straightforward: IF hypertension + 3 antihypertensives + no prior PA screening \u2192 THEN recommend PA screening."},
+        {s:"3",t:"Targeted Recommendation Surfaces",d:"If a guideline match is found, a push notification alerts the provider. The recommendation is specific, actionable, and includes the clinical rationale \u2014 not a generic alert. Managed carefully to avoid alert fatigue."},
+        {s:"4",t:"Provider Reviews &amp; Orders",d:"The provider opens the Vim overlay to review the recommendation, see the guideline reference and triggering data, and can draft the order directly. The order is written back to the EHR via the SDK writeback API."},
+      ].map(i=>
+        <div key={i.s} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,padding:"18px 20px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:"#006B3F",color:"white",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,fontFamily:"system-ui"}}>{i.s}</div>
+            <div style={{fontSize:15,fontWeight:700,color:"#0F172A"}}>{i.t}</div>
+          </div>
+          <p style={{fontSize:13.5,color:"#475569",lineHeight:1.55,margin:0,fontFamily:"system-ui,sans-serif"}}>{i.d}</p>
+        </div>)}
+    </div>
+
+    <h2 style={{fontSize:22,fontWeight:700,color:"#0F172A",margin:"0 0 16px"}}>Example: Primary Aldosteronism Screening</h2>
+    <div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,padding:"20px 24px",marginBottom:36}}>
+      <p style={{fontSize:14,color:"#475569",lineHeight:1.7,margin:"0 0 12px",fontFamily:"system-ui,sans-serif"}}>Primary aldosteronism is a powerful example of this use case in action:</p>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+        <div style={{background:"#EFF6FF",borderRadius:8,padding:"12px 14px",textAlign:"center"}}>
+          <div style={{fontSize:24,fontWeight:800,color:"#1565C0",fontFamily:"system-ui"}}>~120M</div>
+          <div style={{fontSize:11,color:"#1E3A5F",fontFamily:"system-ui,sans-serif"}}>Americans have hypertension</div>
+        </div>
+        <div style={{background:"#FFF7ED",borderRadius:8,padding:"12px 14px",textAlign:"center"}}>
+          <div style={{fontSize:24,fontWeight:800,color:"#C2410C",fontFamily:"system-ui"}}>Up to 30%</div>
+          <div style={{fontSize:11,color:"#7C2D12",fontFamily:"system-ui,sans-serif"}}>of hypertensive patients have PA</div>
+        </div>
+        <div style={{background:"#FEF2F2",borderRadius:8,padding:"12px 14px",textAlign:"center"}}>
+          <div style={{fontSize:24,fontWeight:800,color:"#B91C1C",fontFamily:"system-ui"}}>&lt;1%</div>
+          <div style={{fontSize:11,color:"#7F1D1D",fontFamily:"system-ui,sans-serif"}}>are actually screened for PA</div>
+        </div>
+      </div>
+      <p style={{fontSize:13,color:"#475569",lineHeight:1.6,margin:"12px 0 0",fontFamily:"system-ui,sans-serif"}}>PA is the most common cause of secondary hypertension. Untreated, it leads to disproportionately higher risk of heart failure, stroke, atrial fibrillation, and kidney disease. Quest offers a streamlined reflex test (PRA Reflex to Aldosterone, TC 13817, CPT 84244) aligned to the 2025 Endocrine Society guidelines.</p>
+    </div>
+
+    <h2 style={{fontSize:22,fontWeight:700,color:"#0F172A",margin:"0 0 16px"}}>Why Vim Connect</h2>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:40}}>
+      {[
+        {t:"Right Nudge, Not Noise",d:"Recommendations are targeted and rules-based \u2014 only triggered when specific clinical criteria are met. This avoids alert fatigue while ensuring the provider doesn\u2019t miss a guideline-recommended test."},
+        {t:"Data Already in the EHR",d:"Vim reads vitals, medications, problem list, and prior labs that are already documented. The rules engine connects the dots that a busy provider might miss during a 15-minute visit."},
+        {t:"Same Experience, Any EHR",d:"Quest builds the rules and UI once. Vim Connect surfaces recommendations across EHRs (Athena, ECW, Practice Fusion) \u2014 same targeted nudge for every provider."},
+      ].map((i,idx)=>
+        <div key={idx} style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:10,padding:"16px 18px"}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#1E40AF",marginBottom:6}}>{i.t}</div>
+          <p style={{fontSize:12.5,color:"#1E3A5F",lineHeight:1.5,margin:0,fontFamily:"system-ui,sans-serif"}}>{i.d}</p>
+        </div>)}
+    </div>
+  </div>;
+}
+
+function EHR({onBack}){
+  const[tab,setTab]=useState("Vitals");
+  const[notif,setNotif]=useState(false);
+  const[panel,setPanel]=useState(false);
+  const[badge,setBadge]=useState(0);
+  const[expanded,setExpanded]=useState(null); // which rec is expanded
+  const[orderDrafted,setOrderDrafted]=useState({});
+  const[chartOpened,setChartOpened]=useState(false);
+
+  const openChart=()=>{
+    setChartOpened(true);
+    // Simulate Vim reading chart data and running rules
+    setTimeout(()=>{setBadge(2);setTimeout(()=>setNotif(true),400)},1500);
+  };
+  const openPanel=()=>{setNotif(false);setPanel(true)};
+  const draftOrder=(code)=>{setOrderDrafted(p=>({...p,[code]:true}))};
+  const reset=()=>{setTab("Vitals");setNotif(false);setPanel(false);setBadge(0);setExpanded(null);setOrderDrafted({});setChartOpened(false)};
+
+  const TABS=["Vitals","Medications","Problem list","Prior labs","Orders"];
+
+  return <div className="ehr-view" style={{display:"flex",fontFamily:"system-ui,-apple-system,sans-serif",position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",top:6,left:6,fontSize:11,color:"#2AA2CF",fontWeight:500,zIndex:200}}>Vim Hub classic size</div>
+
+    <div style={{width:150,background:"linear-gradient(180deg,#0A3D5C 0%,#0C2340 100%)",display:"flex",flexDirection:"column",flexShrink:0,paddingTop:26}}>
+      <div style={{padding:"10px 14px 18px"}}><div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:"50%",background:"#4FC3F7"}}></div><span style={{fontSize:16,fontWeight:800,color:"#4FC3F7"}}>eHealth</span></div><div style={{fontSize:8,color:"#64B5F6",opacity:.7,letterSpacing:1.5,textTransform:"uppercase",marginTop:1,marginLeft:12}}>Sandbox EHR</div></div>
+      {["\uD83D\uDCC5 Calendar","\uD83D\uDC65 Patients","\uD83D\uDCCA Reports"].map(x=><div key={x} style={{padding:"9px 14px",color:"rgba(255,255,255,0.5)",fontSize:12.5,cursor:"pointer"}}>{x}</div>)}
+      <div style={{padding:"9px 14px",color:"rgba(255,255,255,0.5)",fontSize:12.5,cursor:"pointer",marginTop:"auto"}}>{"\uD83D\uDCD8"} SDK docs &rarr;</div>
+      <div style={{padding:"10px 14px 14px",color:"rgba(255,255,255,0.4)",fontSize:11.5,display:"flex",alignItems:"center",gap:5,borderTop:"1px solid rgba(255,255,255,0.06)"}}><Ge s={15} c="rgba(255,255,255,0.4)"/> Vim settings</div>
+    </div>
+
+    <div style={{flex:1,background:"#F8FAFC",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{background:"white",borderBottom:"1px solid #E2E8F0",padding:"6px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:14}}>{"\uD83E\uDE7A"}</span><div><span style={{fontSize:11.5,fontWeight:600,color:"#0F172A"}}>Dr. Sarah Mitchell</span><span style={{fontSize:10,color:"#94A3B8",marginLeft:6}}>Primary Care</span></div></div>
+        <div style={{display:"flex",gap:5}}>
+          <button onClick={onBack} style={{background:"none",border:"1px solid #CBD5E1",borderRadius:5,padding:"3px 10px",fontSize:10,color:"#64748B",cursor:"pointer"}}>&larr; Use Case</button>
+          <button onClick={reset} style={{background:"none",border:"1px solid #CBD5E1",borderRadius:5,padding:"3px 10px",fontSize:10,color:"#64748B",cursor:"pointer"}}>Reset</button>
+        </div>
+      </div>
+
+      <div style={{background:"white",borderBottom:"1px solid #E2E8F0",padding:"10px 18px",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#FFF3E0,#FFE0B2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"#E65100",border:"2px solid #FFF3E0"}}>RC</div>
+        <div>
+          <div style={{fontSize:16,fontWeight:700,color:"#0F172A"}}>{PT.name}</div>
+          <div style={{fontSize:10,color:"#64748B"}}>DoB: <strong>{PT.dob}</strong> ({PT.age} yr), Gender: <strong>{PT.gender}</strong>, Insurance: <strong>{PT.ins}</strong>, MRN: <strong>{PT.mrn}</strong></div>
+        </div>
+      </div>
+
+      {!chartOpened?<>
+        <div style={{padding:"10px 18px 0",background:"white"}}>
+          <div style={{fontSize:15,fontWeight:700,color:"#1565C0",textDecoration:"underline",marginBottom:8}}>Today's Schedule &mdash; Apr 14, 2026</div>
+        </div>
+        <div style={{flex:1,overflow:"auto",padding:"14px 18px"}}>
+          <div style={{maxWidth:560}}>
+            {[
+              {name:"Maria Gonzalez",age:34,time:"8:30 AM",reason:"Annual wellness exam",mrn:"2291044",initials:"MG",bg:"#E8EAF6",color:"#283593",active:false},
+              {name:"James Wilson",age:71,time:"9:15 AM",reason:"Diabetes follow-up",mrn:"3384721",initials:"JW",bg:"#E0F2F1",color:"#006B3F",active:false},
+              {name:PT.name,age:PT.age,time:"10:00 AM",reason:"Hypertension follow-up",mrn:PT.mrn,initials:"RC",bg:"#FFF3E0",color:"#E65100",active:true},
+              {name:"Susan Park",age:45,time:"10:45 AM",reason:"Thyroid check",mrn:"5528103",initials:"SP",bg:"#FCE4EC",color:"#C62828",active:false},
+              {name:"David Thompson",age:58,time:"11:30 AM",reason:"Cholesterol recheck",mrn:"6619284",initials:"DT",bg:"#E3F2FD",color:"#1565C0",active:false},
+            ].map((p,i)=><div key={i} onClick={p.active?openChart:undefined} style={{background:"white",borderRadius:8,border:p.active?"2px solid #006B3F":"1px solid #E2E8F0",padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:p.active?"pointer":"default",opacity:p.active?1:0.6}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:36,height:36,borderRadius:"50%",background:p.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:p.color}}>{p.initials}</div>
+                <div>
+                  <div style={{fontSize:11.5,fontWeight:600,color:"#0F172A"}}>{p.name} <span style={{fontWeight:400,color:"#94A3B8"}}>({p.age} yr)</span></div>
+                  <div style={{fontSize:10,color:"#64748B"}}>{p.reason} &middot; MRN: {p.mrn}</div>
+                </div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:10,color:"#64748B"}}>{p.time}</span>
+                {p.active&&<span style={{fontSize:9,background:"#006B3F",color:"white",padding:"3px 8px",borderRadius:4,fontWeight:600}}>Select</span>}
+              </div>
+            </div>)}
+          </div>
+        </div>
+      </>:<>
+        <div style={{padding:"10px 18px 0",background:"white"}}>
+          <div style={{fontSize:15,fontWeight:700,color:"#1565C0",textDecoration:"underline",marginBottom:8}}>Encounters / Apr 14, 2026</div>
+          <div style={{display:"flex",gap:0,borderBottom:"2px solid #E2E8F0"}}>
+            {TABS.map(t=><button key={t} onClick={()=>setTab(t)} style={{background:"none",border:"none",padding:"6px 10px",fontSize:11,fontWeight:tab===t?600:400,color:tab===t?"#0C2340":"#64748B",cursor:"pointer",borderBottom:tab===t?"2.5px solid #1565C0":"2.5px solid transparent",marginBottom:-2}}>{t}</button>)}
+          </div>
+        </div>
+
+        <div style={{flex:1,overflow:"auto",padding:"14px 18px"}}>
+          {tab==="Vitals"&&<div style={{maxWidth:560}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#0F172A",marginBottom:8}}>Vital Signs History</div>
+            <div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"100px 100px 60px",padding:"7px 12px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",fontSize:9.5,fontWeight:600,color:"#64748B",textTransform:"uppercase"}}><div>Date</div><div>Blood Pressure</div><div>HR</div></div>
+              {VITALS.map((v,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"100px 100px 60px",padding:"7px 12px",borderBottom:"1px solid #F1F5F9"}}>
+                <div style={{fontSize:10.5,color:"#475569"}}>{v.date}</div>
+                <div style={{fontSize:10.5,fontWeight:600,color:parseInt(v.bp)>140?"#C62828":"#0F172A"}}>{v.bp} mmHg</div>
+                <div style={{fontSize:10.5,color:"#475569"}}>{v.hr} bpm</div>
+              </div>)}
+            </div>
+          </div>}
+
+          {tab==="Medications"&&<div style={{maxWidth:560}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#0F172A",marginBottom:8}}>Current Medications</div>
+            <div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+              {MEDS.map((m,i)=><div key={i} style={{padding:"8px 12px",borderBottom:"1px solid #F1F5F9",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div><div style={{fontSize:11,fontWeight:500,color:"#0F172A"}}>{m.name} {m.dose}</div><div style={{fontSize:9.5,color:"#94A3B8"}}>{m.freq} &middot; Since {m.since}</div></div>
+                {(m.name==="Amlodipine"||m.name==="Lisinopril"||m.name==="Hydrochlorothiazide")&&<span style={{fontSize:8,background:"#FEF2F2",color:"#B91C1C",padding:"2px 5px",borderRadius:3}}>Antihypertensive</span>}
+              </div>)}
+            </div>
+          </div>}
+
+          {tab==="Problem list"&&<div style={{maxWidth:560}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#0F172A",marginBottom:8}}>Active Problem List</div>
+            <div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+              {PROBLEMS.map((p,i)=><div key={i} style={{padding:"8px 12px",borderBottom:"1px solid #F1F5F9",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div><div style={{fontSize:11,fontWeight:500,color:"#0F172A"}}>{p.code} &mdash; {p.desc}</div><div style={{fontSize:9.5,color:"#94A3B8"}}>{p.status} &middot; Since {p.since}</div></div>
+              </div>)}
+            </div>
+          </div>}
+
+          {tab==="Prior labs"&&<div style={{maxWidth:560}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#0F172A",marginBottom:8}}>Recent Lab Results</div>
+            <div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+              {PRIOR_LABS.map((l,i)=><div key={i} style={{padding:"8px 12px",borderBottom:"1px solid #F1F5F9"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{fontSize:11,fontWeight:500,color:"#0F172A"}}>{l.test}</div>
+                  <span style={{fontSize:10,color:"#64748B"}}>{l.date}</span>
+                </div>
+                <div style={{fontSize:10,color:"#475569",marginTop:2}}>{l.result} &mdash; {l.detail}</div>
+              </div>)}
+            </div>
+          </div>}
+
+          {tab==="Orders"&&<div style={{maxWidth:560}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#0F172A",marginBottom:8}}>Lab Orders</div>
+            {Object.keys(orderDrafted).length===0?<div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",padding:"20px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"#94A3B8"}}>No lab orders drafted yet.</div>
+            </div>:<div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 80px 70px 70px",padding:"7px 12px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",fontSize:9.5,fontWeight:600,color:"#64748B",textTransform:"uppercase"}}><div>Test</div><div>Test Code</div><div>CPT</div><div>Status</div></div>
+              {orderDrafted[RECOMMENDATION.testCode]&&<div style={{display:"grid",gridTemplateColumns:"1fr 80px 70px 70px",padding:"8px 12px",borderBottom:"1px solid #F1F5F9",alignItems:"center"}}>
+                <div><div style={{fontSize:11,fontWeight:500,color:"#0F172A"}}>{RECOMMENDATION.testName}</div><div style={{fontSize:9,color:"#64748B"}}>{RECOMMENDATION.guideline}</div></div>
+                <div style={{fontSize:10,color:"#64748B",fontFamily:"monospace"}}>{RECOMMENDATION.testCode}</div>
+                <div style={{fontSize:10,color:"#64748B",fontFamily:"monospace"}}>{RECOMMENDATION.cpt}</div>
+                <div><span style={{fontSize:8.5,background:"#F0FDF4",color:"#2E7D32",padding:"2px 6px",borderRadius:3,fontWeight:600}}>Drafted</span></div>
+              </div>}
+              {orderDrafted[REC2.testCode]&&<div style={{display:"grid",gridTemplateColumns:"1fr 80px 70px 70px",padding:"8px 12px",borderBottom:"1px solid #F1F5F9",alignItems:"center"}}>
+                <div><div style={{fontSize:11,fontWeight:500,color:"#0F172A"}}>{REC2.testName}</div><div style={{fontSize:9,color:"#64748B"}}>{REC2.guideline}</div></div>
+                <div style={{fontSize:10,color:"#64748B",fontFamily:"monospace"}}>{REC2.testCode}</div>
+                <div style={{fontSize:10,color:"#64748B",fontFamily:"monospace"}}>{REC2.cpt}</div>
+                <div><span style={{fontSize:8.5,background:"#F0FDF4",color:"#2E7D32",padding:"2px 6px",borderRadius:3,fontWeight:600}}>Drafted</span></div>
+              </div>}
+            </div>}
+          </div>}
+        </div>
+      </>}
+    </div>
+
+    {/* Vim Ribbon */}
+    <div style={{width:38,background:"#F1F5F9",borderLeft:"1px solid #E2E8F0",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:8,gap:5,flexShrink:0,zIndex:20}}>
+      <div style={{position:"relative",cursor:badge>0?"pointer":"default"}} onClick={()=>{if(badge>0&&!panel)openPanel()}}>
+        <H s={17}/>
+        {badge>0&&!panel&&<div style={{position:"absolute",top:-4,right:-6,width:14,height:14,borderRadius:"50%",background:"#E65100",color:"white",fontSize:8,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",animation:"pulse 1.5s ease infinite"}}>{badge}</div>}
+      </div>
+      <div style={{cursor:badge>0?"pointer":"default",opacity:badge>0?0.6:0.3}} onClick={()=>{if(badge>0&&!panel)openPanel()}}><Q s={22}/></div>
+      <div style={{marginTop:"auto",marginBottom:8,opacity:.4}}><Ge s={16}/></div>
+    </div>
+
+    {/* Push notification */}
+    {notif&&<div style={{position:"absolute",top:60,right:48,width:285,background:"white",borderRadius:9,boxShadow:"0 8px 30px rgba(0,0,0,.15)",border:"1px solid #E2E8F0",padding:"12px 14px",zIndex:100,animation:"slideIn .35s ease"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}>
+        <div style={{display:"flex",alignItems:"center",gap:5}}><Q s={20}/><span style={{fontSize:11,fontWeight:700,color:"#0F172A"}}>Quest Test Recommendations</span></div>
+        <button onClick={()=>setNotif(false)} style={{background:"none",border:"none",fontSize:15,color:"#94A3B8",cursor:"pointer",lineHeight:1,padding:0}}>&times;</button>
+      </div>
+      <p style={{fontSize:10.5,color:"#475569",lineHeight:1.5,margin:"0 0 4px"}}><strong>2 guideline-based test recommendations</strong> for this patient based on their chart data.</p>
+      <div style={{fontSize:10,color:"#E65100",fontWeight:600,marginBottom:8}}>&bull; Primary Aldosteronism Screening (High priority)</div>
+      <button onClick={openPanel} style={{background:"#006B3F",color:"white",border:"none",borderRadius:5,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",width:"100%"}}>Review recommendations</button>
+    </div>}
+
+    {/* Recommendations Panel */}
+    {panel&&<div style={{position:"absolute",top:0,right:38,width:330,height:"100%",background:"white",boxShadow:"-4px 0 20px rgba(0,0,0,.1)",zIndex:50,display:"flex",flexDirection:"column",animation:"panelSlide .3s ease"}}>
+      <div style={{padding:"10px 14px",borderBottom:"1px solid #E2E8F0",flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+          <div style={{fontSize:11.5,color:"#64748B"}}>{PT.name} / {PT.age} yr / {PT.ins}</div>
+          <button onClick={()=>setPanel(false)} style={{background:"none",border:"none",fontSize:15,color:"#94A3B8",cursor:"pointer"}}>&times;</button>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3}}><Q s={22}/><div style={{fontSize:8.5,color:"#64748B",textTransform:"uppercase",letterSpacing:.5}}>Quest Diagnostics</div></div>
+        <div style={{fontSize:13.5,fontWeight:700,color:"#0F172A"}}>Test Recommendations</div>
+        <div style={{fontSize:10,color:"#64748B",marginTop:1}}>Guidelines-based clinical decision support &mdash; 2 recommendation(s)</div>
+      </div>
+
+      <div style={{flex:1,overflow:"auto",padding:"10px 14px"}}>
+        {/* Recommendation 1: PA Screening */}
+        <div style={{marginBottom:12,borderRadius:8,border:expanded==="pa"?"2px solid #006B3F":"1px solid #E2E8F0",overflow:"hidden"}}>
+          <div onClick={()=>setExpanded(expanded==="pa"?null:"pa")} style={{padding:"10px 12px",background:expanded==="pa"?"#F0FDF4":"white",cursor:"pointer",display:"flex",alignItems:"flex-start",gap:8}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:"#C62828",marginTop:4,flexShrink:0}}/>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#0F172A"}}>{RECOMMENDATION.title}</div>
+              <div style={{fontSize:10,color:"#475569",marginTop:2}}>{RECOMMENDATION.subtitle}</div>
+              <div style={{fontSize:9,color:"#64748B",marginTop:3,fontStyle:"italic"}}>{RECOMMENDATION.guideline}</div>
+            </div>
+            <span style={{fontSize:8,background:"#FEF2F2",color:"#B91C1C",padding:"2px 6px",borderRadius:3,fontWeight:600,whiteSpace:"nowrap"}}>High</span>
+          </div>
+
+          {expanded==="pa"&&<div style={{padding:"0 12px 12px",background:"#F0FDF4"}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#0F172A",marginBottom:6,marginTop:4}}>Why this recommendation?</div>
+            {RECOMMENDATION.triggers.map((t,i)=><div key={i} style={{padding:"5px 8px",marginBottom:4,background:"white",borderRadius:5,border:"1px solid #E2E8F0",fontSize:10}}>
+              <div style={{fontWeight:600,color:"#0F172A"}}>{t.icon} {t.label}</div>
+              <div style={{color:"#64748B",marginTop:1}}>{t.detail}</div>
+            </div>)}
+
+            <div style={{marginTop:8,padding:"8px 10px",background:"#FFF7ED",borderRadius:6,border:"1px solid #FED7AA"}}>
+              <div style={{fontSize:9.5,fontWeight:600,color:"#C2410C",marginBottom:3}}>Untreated PA increases risk of:</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                {RECOMMENDATION.risks.map((r,i)=><span key={i} style={{fontSize:8.5,background:"#FEF2F2",color:"#B91C1C",padding:"2px 5px",borderRadius:3}}>{r}</span>)}
+              </div>
+            </div>
+
+            <div style={{marginTop:8,padding:"8px 10px",background:"#EFF6FF",borderRadius:6,border:"1px solid #BFDBFE"}}>
+              <div style={{fontSize:9.5,fontWeight:600,color:"#1565C0",marginBottom:3}}>Recommended test:</div>
+              <div style={{fontSize:10.5,fontWeight:600,color:"#0F172A"}}>{RECOMMENDATION.testName}</div>
+              <div style={{fontSize:9,color:"#64748B",marginTop:2}}>Test code: {RECOMMENDATION.testCode} &middot; CPT: {RECOMMENDATION.cpt}</div>
+              <div style={{fontSize:9,color:"#64748B",marginTop:4}}>Considerations: {RECOMMENDATION.considerations.join("; ")}</div>
+            </div>
+
+            {!orderDrafted[RECOMMENDATION.testCode]?<button onClick={()=>draftOrder(RECOMMENDATION.testCode)} style={{marginTop:10,width:"100%",background:"#006B3F",color:"white",border:"none",borderRadius:6,padding:"8px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Draft order &amp; write back to EHR</button>
+            :<div style={{marginTop:10,display:"flex",alignItems:"center",gap:5,justifyContent:"center",padding:6}}><Ch/><span style={{fontSize:11,fontWeight:600,color:"#2E7D32"}}>Order drafted &mdash; written to EHR</span></div>}
+          </div>}
+        </div>
+
+        {/* Recommendation 2: Microalbumin */}
+        <div style={{marginBottom:12,borderRadius:8,border:expanded==="ma"?"2px solid #006B3F":"1px solid #E2E8F0",overflow:"hidden"}}>
+          <div onClick={()=>setExpanded(expanded==="ma"?null:"ma")} style={{padding:"10px 12px",background:expanded==="ma"?"#F0FDF4":"white",cursor:"pointer",display:"flex",alignItems:"flex-start",gap:8}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:"#E65100",marginTop:4,flexShrink:0}}/>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#0F172A"}}>{REC2.title}</div>
+              <div style={{fontSize:10,color:"#475569",marginTop:2}}>{REC2.subtitle}</div>
+              <div style={{fontSize:9,color:"#64748B",marginTop:3,fontStyle:"italic"}}>{REC2.guideline}</div>
+            </div>
+            <span style={{fontSize:8,background:"#FFF7ED",color:"#E65100",padding:"2px 6px",borderRadius:3,fontWeight:600,whiteSpace:"nowrap"}}>Medium</span>
+          </div>
+
+          {expanded==="ma"&&<div style={{padding:"0 12px 12px",background:"#F0FDF4"}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#0F172A",marginBottom:6,marginTop:4}}>Why this recommendation?</div>
+            {REC2.triggers.map((t,i)=><div key={i} style={{padding:"5px 8px",marginBottom:4,background:"white",borderRadius:5,border:"1px solid #E2E8F0",fontSize:10}}>
+              <div style={{fontWeight:600,color:"#0F172A"}}>{t.icon} {t.label}</div>
+              <div style={{color:"#64748B",marginTop:1}}>{t.detail}</div>
+            </div>)}
+            <div style={{marginTop:6,padding:"8px 10px",background:"#EFF6FF",borderRadius:6,border:"1px solid #BFDBFE"}}>
+              <div style={{fontSize:10.5,fontWeight:600,color:"#0F172A"}}>{REC2.testName}</div>
+              <div style={{fontSize:9,color:"#64748B",marginTop:2}}>Test code: {REC2.testCode} &middot; CPT: {REC2.cpt}</div>
+            </div>
+            {!orderDrafted[REC2.testCode]?<button onClick={()=>draftOrder(REC2.testCode)} style={{marginTop:10,width:"100%",background:"#006B3F",color:"white",border:"none",borderRadius:6,padding:"8px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Draft order &amp; write back to EHR</button>
+            :<div style={{marginTop:10,display:"flex",alignItems:"center",gap:5,justifyContent:"center",padding:6}}><Ch/><span style={{fontSize:11,fontWeight:600,color:"#2E7D32"}}>Order drafted &mdash; written to EHR</span></div>}
+          </div>}
+        </div>
+      </div>
+
+      <div style={{borderTop:"1px solid #E2E8F0",padding:"9px 14px",flexShrink:0}}>
+        <div style={{fontSize:9,color:"#94A3B8",textAlign:"center",lineHeight:1.5}}>Rules-based recommendations only. No AI. Based on published medical guidelines. Clinical judgment applies.</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:7,fontSize:8.5,color:"#94A3B8"}}>
+          <div style={{display:"flex",alignItems:"center",gap:3}}><H s={11}/> Terms of Service | Privacy Policy</div>
+          <span>Need help?</span>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+function App(){
+  const[v,setV]=useState("uc");
+  if(v==="ehr")return <EHR onBack={()=>setV("uc")}/>;
+  return <Overview go={()=>setV("ehr")}/>;
+}
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quest Diagnostics × Vim Connect — Health Alerts Demo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,sans-serif}
+  .ehr-view{overflow:hidden;height:100vh}
+  textarea,button,input,select{font-family:inherit}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes panelSlide{from{transform:translateX(100%)}to{transform:translateX(0)}}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState}=React;
+
+const ORDERS=[
+  {test:"Lipid Panel",cpt:"80061",dx:"Z00.00",dxDesc:"Encounter for general adult medical exam",supportive:false,payer:"Medicare",policy:"Lipid Panel NCD"},
+  {test:"TSH",cpt:"84443",dx:"E03.9",dxDesc:"Hypothyroidism, unspecified",supportive:true,payer:"Medicare",policy:"Thyroid Testing NCD"},
+  {test:"Hemoglobin A1c",cpt:"83036",dx:"Z00.00",dxDesc:"Encounter for general adult medical exam",supportive:false,payer:"Medicare",policy:"Glycated Hemoglobin NCD"},
+  {test:"Vitamin D, 25-Hydroxy",cpt:"82306",dx:"M81.0",dxDesc:"Age-related osteoporosis w/o fracture",supportive:true,payer:"Aetna",policy:"Vitamin D Testing LCP"},
+];
+
+const CODES={
+  "80061":[
+    {code:"E78.5",desc:"Hyperlipidemia, unspecified",freq:"Most common"},
+    {code:"E78.0",desc:"Pure hypercholesterolemia",freq:"Frequent"},
+    {code:"E78.2",desc:"Mixed hyperlipidemia",freq:"Frequent"},
+    {code:"E78.1",desc:"Pure hyperglyceridemia",freq:""},
+    {code:"E11.65",desc:"Type 2 DM with hyperglycemia",freq:""},
+    {code:"I25.10",desc:"ASHD of native coronary artery",freq:""},
+  ],
+  "83036":[
+    {code:"E11.65",desc:"Type 2 DM with hyperglycemia",freq:"Most common"},
+    {code:"E11.9",desc:"Type 2 DM without complications",freq:"Frequent"},
+    {code:"R73.03",desc:"Prediabetes",freq:"Frequent"},
+    {code:"E13.9",desc:"Other specified DM w/o complications",freq:""},
+    {code:"Z13.1",desc:"Screening for diabetes mellitus",freq:""},
+  ],
+};
+
+const PT={name:"Margaret Johnson",dob:"11/22/1948",age:76,gender:"Female",ins:"Medicare Part B",mrn:"8834201"};
+
+const H=({s})=><svg width={s||20} height={s||20} viewBox="0 0 24 24" fill="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#4FC3F7"/></svg>;
+const Q=({s})=><svg width={s||28} height={s||28} viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" fill="#006B3F"/><text x="14" y="18.5" textAnchor="middle" fill="white" fontSize="13" fontWeight="700" fontFamily="Georgia,serif">Q</text></svg>;
+const Warn=({s})=><svg width={s||16} height={s||16} viewBox="0 0 16 16" fill="none"><path d="M8 1L15 14H1L8 1Z" fill="#E65100"/><text x="8" y="12" textAnchor="middle" fill="white" fontSize="8" fontWeight="700">!</text></svg>;
+const Ch=()=><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="#2E7D32"/><path d="M5 8l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+const XIcon=()=><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="#C62828"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>;
+const Ge=({s,c})=><svg width={s||20} height={s||20} viewBox="0 0 24 24" fill="none" stroke={c||"#64748B"} strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+
+function Overview({go}){
+  return <div style={{maxWidth:780,margin:"0 auto",padding:"40px 24px",fontFamily:"Georgia,serif"}}>
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:32}}>
+      <Q/><span style={{fontSize:13,fontWeight:600,color:"#006B3F",letterSpacing:1,textTransform:"uppercase"}}>Quest Diagnostics</span>
+      <span style={{color:"#CBD5E1",margin:"0 4px"}}>&times;</span>
+      <H/><span style={{fontSize:13,fontWeight:600,color:"#0288D1",letterSpacing:1,textTransform:"uppercase"}}>Vim Connect</span>
+    </div>
+    <div style={{background:"#0F172A",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:36}}>
+      <div>
+        <div style={{fontSize:18,fontWeight:700,color:"white",marginBottom:4}}>Interactive Demo</div>
+        <div style={{fontSize:13,color:"#94A3B8",fontFamily:"system-ui,sans-serif"}}>See how a provider gets alerted and corrects a diagnosis code, with writeback to the EHR.</div>
+      </div>
+      <button onClick={go} style={{background:"#006B3F",color:"white",border:"none",borderRadius:8,padding:"12px 28px",fontSize:14,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"system-ui,sans-serif"}}>Launch Demo &rarr;</button>
+    </div>
+    <h1 style={{fontSize:32,fontWeight:700,color:"#0F172A",lineHeight:1.25,margin:"0 0 8px"}}>Health Alerts &mdash; Limited Coverage &amp; Diagnosis Code Support</h1>
+    <p style={{fontSize:17,color:"#475569",lineHeight:1.65,margin:"0 0 36px"}}>A Vim Connect application that proactively alerts providers when a lab order contains an unsupportive diagnosis code &mdash; and lets them select a compliant ICD-10 code that is written back to the EHR, before the order is submitted.</p>
+
+    <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"20px 24px",marginBottom:36}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#C2410C",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>The Problem</div>
+      <p style={{fontSize:15,color:"#7C2D12",lineHeight:1.6,margin:0}}>Medicare and commercial payers publish <strong>limited coverage policies (LCPs)</strong> for certain laboratory tests. Tests ordered without a medically supportive ICD-10 code will not satisfy medical necessity and coverage may be denied. This results in claim rejections, patient billing surprises, follow-up calls to the practice for corrected codes, and delayed or cancelled tests. Today, providers must manually cross-reference static PDF guides or launch a SMART on FHIR app to check coverage &mdash; most don't.</p>
+    </div>
+
+    <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:10,padding:"20px 24px",marginBottom:36}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#166534",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>The Solution</div>
+      <p style={{fontSize:15,color:"#14532D",lineHeight:1.6,margin:0}}>The <strong>Health Alerts</strong> app runs through the Vim Connect ribbon. When a provider places a lab order, Vim's smart launch technology reads the order context &mdash; tests, CPT codes, ICD-10 codes, and patient insurance. If a code is unsupportive under the applicable payer's limited coverage policy, a <strong>real-time push notification</strong> alerts the provider. They interact with the Vim overlay to see the flagged tests and select a <strong>medically supportive ICD-10 code</strong>. Vim then <strong>writes the corrected code back to the EHR</strong> via the SDK writeback API &mdash; updating the order before submission.</p>
+    </div>
+
+    <h2 style={{fontSize:22,fontWeight:700,color:"#0F172A",margin:"0 0 16px"}}>How It Works</h2>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:36}}>
+      {[
+        {s:"1",t:"Provider Places Lab Order",d:"The provider orders lab tests and attaches diagnosis codes from the patient\u2019s chart. Vim reads the order context (tests, CPT codes, ICD-10 codes, payer) via the Order Workflow."},
+        {s:"2",t:"Vim Checks Coverage Policies",d:"Quest\u2019s coverage logic checks the attached codes against the applicable payer\u2019s limited coverage policies in real-time. If any code is unsupportive, Vim surfaces a push notification alerting the provider."},
+        {s:"3",t:"Provider Selects Supportive Code",d:"The provider opens the Vim overlay to see the flagged tests, the relevant policy, and a list of medically supportive ICD-10 codes. They select the appropriate code for the patient\u2019s condition."},
+        {s:"4",t:"Writeback to EHR",d:"Vim writes the corrected diagnosis code back to the EHR via the SDK writeback API \u2014 updating the order diagnosis (updateOrder) and the encounter assessment (updateEncounter). Optionally, the provider can also add the diagnosis to the active problem list."},
+      ].map(i=>
+        <div key={i.s} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,padding:"18px 20px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:"#006B3F",color:"white",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,fontFamily:"system-ui"}}>{i.s}</div>
+            <div style={{fontSize:15,fontWeight:700,color:"#0F172A"}}>{i.t}</div>
+          </div>
+          <p style={{fontSize:13.5,color:"#475569",lineHeight:1.55,margin:0,fontFamily:"system-ui,sans-serif"}}>{i.d}</p>
+        </div>)}
+    </div>
+
+    <h2 style={{fontSize:22,fontWeight:700,color:"#0F172A",margin:"0 0 16px"}}>Why Vim Connect</h2>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:40}}>
+      {[
+        {t:"Proactive, Not Passive",d:"Unlike SMART on FHIR apps that require a manual launch, Health Alerts push to the provider the moment an unsupportive code is detected. The provider doesn\u2019t need to know there\u2019s a problem."},
+        {t:"Correct Before Submission",d:"The corrected code is written back to the EHR order via Vim\u2019s writeback API. The provider sees the update reflected in the EHR \u2014 no manual re-entry, no copy-paste."},
+        {t:"Same Experience, Any EHR",d:"Quest builds the coverage logic and UI once. Vim Connect surfaces it across EHRs (Athena, ECW, Practice Fusion) \u2014 same alert experience for every provider."},
+      ].map((i,idx)=>
+        <div key={idx} style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:10,padding:"16px 18px"}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#1E40AF",marginBottom:6}}>{i.t}</div>
+          <p style={{fontSize:12.5,color:"#1E3A5F",lineHeight:1.5,margin:0,fontFamily:"system-ui,sans-serif"}}>{i.d}</p>
+        </div>)}
+    </div>
+  </div>;
+}
+
+function EHR({onBack}){
+  const[step,setStep]=useState("ordering"); // ordering, submitted, correcting, writeback, done
+  const[notif,setNotif]=useState(false);
+  const[panel,setPanel]=useState(false);
+  const[badge,setBadge]=useState(0);
+  const[corrections,setCorrections]=useState({});
+  const[writtenBack,setWrittenBack]=useState(false);
+  const[addToPL,setAddToPL]=useState({});
+  const[tab,setTab]=useState("Orders");
+
+  const unsup=ORDERS.filter(o=>!o.supportive);
+  const allCorrected=unsup.every(o=>corrections[o.cpt]);
+
+  // EHR order data — shows what's in the EHR (updated after writeback)
+  const getEhrDx=(o)=>{
+    if(writtenBack&&corrections[o.cpt]) return corrections[o.cpt];
+    return {code:o.dx,desc:o.dxDesc};
+  };
+
+  const submitOrders=()=>{
+    setStep("submitted");
+    setTimeout(()=>{setBadge(unsup.length);setNotif(true)},1200);
+  };
+  const openPanel=()=>{setNotif(false);setPanel(true);setStep("correcting")};
+  const selectCode=(cpt,code)=>setCorrections(p=>({...p,[cpt]:code}));
+  const applyWriteback=()=>{
+    setStep("writeback");
+    // Simulate writeback delay
+    setTimeout(()=>{setWrittenBack(true);setPanel(false);setBadge(0);setStep("done")},800);
+  };
+  const reset=()=>{setStep("ordering");setNotif(false);setPanel(false);setBadge(0);setCorrections({});setWrittenBack(false);setAddToPL({});setTab("Orders")};
+
+  return <div className="ehr-view" style={{display:"flex",fontFamily:"system-ui,-apple-system,sans-serif",position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",top:6,left:6,fontSize:11,color:"#2AA2CF",fontWeight:500,zIndex:200}}>Vim Hub classic size</div>
+
+    {/* Sidebar */}
+    <div style={{width:150,background:"linear-gradient(180deg,#0A3D5C 0%,#0C2340 100%)",display:"flex",flexDirection:"column",flexShrink:0,paddingTop:26}}>
+      <div style={{padding:"10px 14px 18px"}}><div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:"50%",background:"#4FC3F7"}}></div><span style={{fontSize:16,fontWeight:800,color:"#4FC3F7"}}>eHealth</span></div><div style={{fontSize:8,color:"#64B5F6",opacity:.7,letterSpacing:1.5,textTransform:"uppercase",marginTop:1,marginLeft:12}}>Sandbox EHR</div></div>
+      {["\uD83D\uDCC5 Calendar","\uD83D\uDC65 Patients","\uD83D\uDCCA Reports"].map(x=><div key={x} style={{padding:"9px 14px",color:"rgba(255,255,255,0.5)",fontSize:12.5,cursor:"pointer"}}>{x}</div>)}
+      <div style={{padding:"9px 14px",color:"rgba(255,255,255,0.5)",fontSize:12.5,cursor:"pointer",marginTop:"auto"}}>{"\uD83D\uDCD8"} SDK docs &rarr;</div>
+      <div style={{padding:"10px 14px 14px",color:"rgba(255,255,255,0.4)",fontSize:11.5,display:"flex",alignItems:"center",gap:5,borderTop:"1px solid rgba(255,255,255,0.06)"}}><Ge s={15} c="rgba(255,255,255,0.4)"/> Vim settings</div>
+    </div>
+
+    {/* Main */}
+    <div style={{flex:1,background:"#F8FAFC",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{background:"white",borderBottom:"1px solid #E2E8F0",padding:"6px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:14}}>{"\uD83E\uDE7A"}</span><div><span style={{fontSize:11.5,fontWeight:600,color:"#0F172A"}}>Dr. Sarah Mitchell</span><span style={{fontSize:10,color:"#94A3B8",marginLeft:6}}>Ordering Provider</span></div></div>
+        <div style={{display:"flex",gap:5}}>
+          <button onClick={onBack} style={{background:"none",border:"1px solid #CBD5E1",borderRadius:5,padding:"3px 10px",fontSize:10,color:"#64748B",cursor:"pointer"}}>&larr; Use Case</button>
+          <button onClick={reset} style={{background:"none",border:"1px solid #CBD5E1",borderRadius:5,padding:"3px 10px",fontSize:10,color:"#64748B",cursor:"pointer"}}>Reset</button>
+        </div>
+      </div>
+
+      <div style={{background:"white",borderBottom:"1px solid #E2E8F0",padding:"10px 18px",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#E8EAF6,#C5CAE9)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"#283593",border:"2px solid #E8EAF6"}}>MJ</div>
+        <div>
+          <div style={{fontSize:16,fontWeight:700,color:"#0F172A"}}>{PT.name}</div>
+          <div style={{fontSize:10,color:"#64748B"}}>DoB: <strong>{PT.dob}</strong> ({PT.age} yr), Insurance: <strong>{PT.ins}</strong>, MRN: <strong>{PT.mrn}</strong></div>
+        </div>
+      </div>
+
+      <div style={{padding:"10px 18px 0",background:"white"}}>
+        <div style={{fontSize:15,fontWeight:700,color:"#1565C0",textDecoration:"underline",marginBottom:8}}>Encounters / Apr 14, 2026</div>
+        <div style={{display:"flex",gap:0,borderBottom:"2px solid #E2E8F0"}}>
+          {["Subjective","Assessments","Plan","Orders"].map(t=><button key={t} onClick={()=>setTab(t)} style={{background:"none",border:"none",padding:"6px 10px",fontSize:11,fontWeight:tab===t?600:400,color:tab===t?"#0C2340":"#64748B",cursor:"pointer",borderBottom:tab===t?"2.5px solid #1565C0":"2.5px solid transparent",marginBottom:-2}}>{t}</button>)}
+        </div>
+      </div>
+
+      <div style={{flex:1,overflow:"auto",padding:"14px 18px"}}>
+        {tab==="Orders"?<div style={{maxWidth:580}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#0F172A",marginBottom:10}}>Lab Orders</div>
+
+          {/* EHR order table — stays clean, no red/green highlighting */}
+          <div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",overflow:"hidden",marginBottom:14}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 70px 80px 1fr",padding:"8px 12px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",fontSize:10,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:.5}}>
+              <div>Test</div><div>CPT</div><div>Payer</div><div>ICD-10 / Diagnosis</div>
+            </div>
+            {ORDERS.map((o,i)=>{
+              const ehrDx=getEhrDx(o);
+              return <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 70px 80px 1fr",padding:"8px 12px",borderBottom:"1px solid #F1F5F9",alignItems:"center",background:"white"}}>
+                <div style={{fontSize:11,fontWeight:500,color:"#0F172A"}}>{o.test}</div>
+                <div style={{fontSize:10,color:"#64748B",fontFamily:"monospace"}}>{o.cpt}</div>
+                <div style={{fontSize:10,color:"#64748B"}}>{o.payer}</div>
+                <div>
+                  <div style={{fontSize:10,color:"#334155",fontWeight:500}}>{ehrDx.code}</div>
+                  <div style={{fontSize:9,color:"#94A3B8"}}>{ehrDx.desc}</div>
+                </div>
+              </div>})}
+          </div>
+
+          {step==="ordering"&&<button onClick={submitOrders} style={{background:"#006B3F",color:"white",border:"none",borderRadius:6,padding:"8px 20px",fontSize:12,fontWeight:600,cursor:"pointer"}}>Submit Orders</button>}
+
+
+
+        </div>:tab==="Assessments"?<div style={{maxWidth:700}}>
+          <div style={{display:"flex",gap:16}}>
+            {/* Left: Assessment codes table */}
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#0F172A",marginBottom:10}}>Assessments</div>
+              {/* Search/add bar */}
+              <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
+                <input type="text" placeholder="Search codes" style={{flex:1,border:"1px solid #E2E8F0",borderRadius:5,padding:"6px 10px",fontSize:10.5,outline:"none"}}/>
+                <input type="text" placeholder="Add notes" style={{flex:1,border:"1px solid #E2E8F0",borderRadius:5,padding:"6px 10px",fontSize:10.5,outline:"none"}}/>
+                <div style={{fontSize:9,color:"#64748B",display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}>
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" stroke="#64748B" strokeWidth="1.5"/><path d="M5 8l2 2 4-4" stroke="#64748B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Add to PL
+                </div>
+                <button style={{background:"#334155",color:"white",border:"none",borderRadius:5,padding:"6px 12px",fontSize:10,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>+ Add</button>
+              </div>
+              {/* General notes */}
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:10.5,fontWeight:500,color:"#334155",marginBottom:3}}>General notes</div>
+                <textarea style={{width:"100%",border:"1px solid #E2E8F0",borderRadius:5,padding:8,fontSize:10.5,minHeight:36,resize:"vertical",outline:"none",boxSizing:"border-box"}} placeholder=""></textarea>
+              </div>
+              {/* ICD table */}
+              <div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"70px 1fr 120px 30px",padding:"6px 10px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",fontSize:9.5,fontWeight:600,color:"#64748B"}}>
+                  <div>ICD</div><div>Description</div><div>Notes</div><div></div>
+                </div>
+                {ORDERS.map((o,i)=>{const ehrDx=getEhrDx(o);return <div key={i} style={{display:"grid",gridTemplateColumns:"70px 1fr 120px 30px",padding:"7px 10px",borderBottom:"1px solid #F1F5F9",alignItems:"center"}}>
+                  <div style={{fontSize:10.5,fontWeight:500,color:"#0F172A"}}>{ehrDx.code}</div>
+                  <div style={{fontSize:10,color:"#475569",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ehrDx.desc}</div>
+                  <input type="text" placeholder="Add notes" style={{border:"1px solid #E2E8F0",borderRadius:4,padding:"3px 6px",fontSize:9.5,outline:"none",width:"100%"}}/>
+                  <div style={{textAlign:"center",cursor:"pointer",fontSize:12,color:"#94A3B8"}}>{"\uD83D\uDDD1"}</div>
+                </div>})}
+              </div>
+              {writtenBack&&<div style={{marginTop:8,fontSize:9.5,color:"#64748B",fontStyle:"italic"}}>Assessment codes updated via Vim writeback (updateEncounter)</div>}
+            </div>
+
+            {/* Right: Active & Historical problem lists */}
+            <div style={{width:200,flexShrink:0}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#0F172A",marginBottom:6}}>Active problems list</div>
+              <div style={{background:"white",borderRadius:6,border:"1px solid #E2E8F0",overflow:"hidden",marginBottom:14}}>
+                <div style={{display:"grid",gridTemplateColumns:"55px 1fr",padding:"5px 8px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",fontSize:9,fontWeight:600,color:"#64748B"}}>
+                  <div>ICD</div><div>Description</div>
+                </div>
+                {/* Existing problems */}
+                {[{code:"I10",desc:"Essential hypertension"},{code:"E78.5",desc:"Hyperlipidemia, unspecified"},{code:"M19.90",desc:"Unspecified osteoarthritis"}].map((p,i)=>
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"55px 1fr",padding:"5px 8px",borderBottom:"1px solid #F1F5F9",fontSize:9.5}}>
+                    <div style={{color:"#0F172A",fontWeight:500}}>{p.code}</div>
+                    <div style={{color:"#64748B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.desc}</div>
+                  </div>
+                )}
+                {/* Written-back problems */}
+                {writtenBack&&unsup.filter(o=>addToPL[o.cpt]&&corrections[o.cpt]).map((o,i)=>
+                  <div key={"pl"+i} style={{display:"grid",gridTemplateColumns:"55px 1fr",padding:"5px 8px",borderBottom:"1px solid #F1F5F9",fontSize:9.5,background:"#F0FDF4"}}>
+                    <div style={{color:"#2E7D32",fontWeight:600}}>{corrections[o.cpt].code}</div>
+                    <div style={{color:"#2E7D32",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{corrections[o.cpt].desc}</div>
+                  </div>
+                )}
+              </div>
+              <div style={{fontSize:11,fontWeight:700,color:"#0F172A",marginBottom:6}}>Historical problems list</div>
+              <div style={{background:"white",borderRadius:6,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"55px 1fr",padding:"5px 8px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",fontSize:9,fontWeight:600,color:"#64748B"}}>
+                  <div>ICD</div><div>Description</div>
+                </div>
+                {[{code:"J06.9",desc:"Acute upper respiratory infection"},{code:"R51.9",desc:"Headache, unspecified"}].map((p,i)=>
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"55px 1fr",padding:"5px 8px",borderBottom:"1px solid #F1F5F9",fontSize:9.5}}>
+                    <div style={{color:"#0F172A",fontWeight:500}}>{p.code}</div>
+                    <div style={{color:"#64748B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.desc}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>:<div style={{maxWidth:560}}>
+          {["General notes","Chief complaint","History of present illness"].map(f=><div key={f} style={{marginBottom:12}}>
+            <label style={{fontSize:11,fontWeight:500,color:"#334155",display:"block",marginBottom:2}}>{f}</label>
+            <textarea style={{width:"100%",border:"1px solid #E2E8F0",borderRadius:5,padding:8,fontSize:11,minHeight:50,resize:"vertical",outline:"none",boxSizing:"border-box"}} placeholder="Enter notes"></textarea>
+          </div>)}
+        </div>}
+      </div>
+    </div>
+
+    {/* Vim Ribbon */}
+    <div style={{width:38,background:"#F1F5F9",borderLeft:"1px solid #E2E8F0",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:8,gap:5,flexShrink:0,zIndex:20}}>
+      <div style={{position:"relative",cursor:badge>0?"pointer":"default"}} onClick={()=>{if(badge>0&&!panel)openPanel()}}>
+        <H s={17}/>
+        {badge>0&&!panel&&<div style={{position:"absolute",top:-4,right:-6,width:14,height:14,borderRadius:"50%",background:"#E65100",color:"white",fontSize:8,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",animation:"pulse 1.5s ease infinite"}}>{badge}</div>}
+      </div>
+      <div style={{cursor:badge>0?"pointer":"default",opacity:badge>0?0.6:0.3}} onClick={()=>{if(badge>0&&!panel)openPanel()}}><Q s={22}/></div>
+      <div style={{marginTop:"auto",marginBottom:8,opacity:.4}}><Ge s={16}/></div>
+    </div>
+
+    {/* Push notification */}
+    {notif&&<div style={{position:"absolute",top:60,right:48,width:280,background:"white",borderRadius:9,boxShadow:"0 8px 30px rgba(0,0,0,.15)",border:"1px solid #E2E8F0",padding:"12px 14px",zIndex:100,animation:"slideIn .35s ease"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}>
+        <div style={{display:"flex",alignItems:"center",gap:5}}><Q s={20}/><span style={{fontSize:11,fontWeight:700,color:"#0F172A"}}>Quest Health Alert</span></div>
+        <button onClick={()=>setNotif(false)} style={{background:"none",border:"none",fontSize:15,color:"#94A3B8",cursor:"pointer",lineHeight:1,padding:0}}>&times;</button>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}><Warn s={14}/><span style={{fontSize:11,fontWeight:600,color:"#E65100"}}>{unsup.length} test(s) with unsupportive diagnosis codes</span></div>
+      <p style={{fontSize:10.5,color:"#475569",lineHeight:1.5,margin:"0 0 8px"}}>Coverage may be denied under the patient's payer policy. Review and select supportive ICD-10 codes to update the order.</p>
+      <button onClick={openPanel} style={{background:"#C2410C",color:"white",border:"none",borderRadius:5,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",width:"100%"}}>Review &amp; correct codes</button>
+    </div>}
+
+    {/* Health Alerts Panel */}
+    {panel&&<div style={{position:"absolute",top:0,right:38,width:320,height:"100%",background:"white",boxShadow:"-4px 0 20px rgba(0,0,0,.1)",zIndex:50,display:"flex",flexDirection:"column",animation:"panelSlide .3s ease"}}>
+      <div style={{padding:"10px 14px",borderBottom:"1px solid #E2E8F0",flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+          <div style={{fontSize:11.5,color:"#64748B"}}>{PT.name} / {PT.ins}</div>
+          <button onClick={()=>setPanel(false)} style={{background:"none",border:"none",fontSize:15,color:"#94A3B8",cursor:"pointer"}}>&times;</button>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3}}><Q s={22}/><div style={{fontSize:8.5,color:"#64748B",textTransform:"uppercase",letterSpacing:.5}}>Quest Diagnostics</div></div>
+        <div style={{fontSize:13.5,fontWeight:700,color:"#0F172A"}}>Coverage &amp; Coding Alert</div>
+        <div style={{fontSize:10,color:"#64748B",marginTop:1}}>Limited coverage policy check &mdash; {unsup.length} issue(s) found</div>
+      </div>
+
+      <div style={{flex:1,overflow:"auto",padding:"0"}}>
+        <div style={{background:"#FFF3E0",padding:"8px 14px",display:"flex",alignItems:"center",gap:5}}>
+          <Warn s={14}/><span style={{fontSize:11,fontWeight:600,color:"#E65100"}}>{unsup.filter(o=>!corrections[o.cpt]).length} unsupportive code(s) remaining</span>
+        </div>
+
+        <div style={{padding:"10px 14px"}}>
+          {unsup.map((o,i)=>{
+            const corrected=corrections[o.cpt];
+            const codes=CODES[o.cpt]||[];
+            return <div key={i} style={{marginBottom:14,background:corrected?"#F0FDF4":"#FAFAFA",borderRadius:8,padding:"12px",border:corrected?"1px solid #BBF7D0":"1px solid #E2E8F0"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#0F172A"}}>{o.test}</div>
+                <span style={{fontSize:9,fontFamily:"monospace",color:"#94A3B8"}}>CPT {o.cpt}</span>
+              </div>
+              <div style={{fontSize:10,color:"#64748B",marginBottom:6}}>Policy: <strong>{o.policy}</strong> &middot; Payer: {o.payer}</div>
+
+              {corrected?<div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}><Ch/><span style={{fontSize:11,fontWeight:600,color:"#2E7D32"}}>Supportive code selected</span></div>
+                <div style={{fontSize:10,color:"#2E7D32"}}><strong>{corrected.code}</strong> &mdash; {corrected.desc}</div>
+                <div style={{fontSize:9,color:"#94A3B8",textDecoration:"line-through",marginTop:2}}>Was: {o.dx} &mdash; {o.dxDesc}</div>
+                <div style={{marginTop:6,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",background:"#F8FAFC",borderRadius:5,border:"1px solid #E2E8F0"}}>
+                  <div style={{fontSize:9,color:"#475569",display:"flex",alignItems:"center",gap:3}}>
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" stroke="#94A3B8" strokeWidth="1.5"/><path d="M4 8h8M8 4v8" stroke="#94A3B8" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    Add to active problem list?
+                  </div>
+                  <button onClick={()=>setAddToPL(p=>({...p,[o.cpt]:!p[o.cpt]}))} style={{width:32,height:16,borderRadius:8,border:"none",cursor:"pointer",background:addToPL[o.cpt]?"#006B3F":"#CBD5E1",position:"relative",transition:"background 0.2s"}}>
+                    <div style={{width:12,height:12,borderRadius:"50%",background:"white",position:"absolute",top:2,left:addToPL[o.cpt]?18:2,transition:"left 0.2s",boxShadow:"0 1px 2px rgba(0,0,0,.15)"}}/>
+                  </button>
+                </div>
+                <div style={{marginTop:5,fontSize:8.5,color:"#94A3B8"}}>
+                  Writeback: order dx + encounter assessment{addToPL[o.cpt]?" + problem list":""}
+                </div>
+              </div>:<div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+                  <XIcon/><span style={{fontSize:10,color:"#C62828"}}>Current: <strong>{o.dx}</strong> &mdash; {o.dxDesc}</span>
+                </div>
+                <div style={{fontSize:10,fontWeight:600,color:"#0F172A",marginBottom:4}}>Select a supportive ICD-10 code:</div>
+                {codes.map((c,j)=><div key={j} onClick={()=>selectCode(o.cpt,c)} style={{padding:"6px 8px",marginBottom:3,borderRadius:5,border:"1px solid #E2E8F0",cursor:"pointer",background:"white",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:10}}>
+                  <div><strong style={{color:"#006B3F"}}>{c.code}</strong><span style={{color:"#475569",marginLeft:6}}>{c.desc}</span></div>
+                  {c.freq&&<span style={{fontSize:8,background:"#E8F5E9",color:"#2E7D32",padding:"1px 4px",borderRadius:3,whiteSpace:"nowrap"}}>{c.freq}</span>}
+                </div>)}
+              </div>}
+            </div>})}
+        </div>
+      </div>
+
+      <div style={{borderTop:"1px solid #E2E8F0",padding:"9px 14px",flexShrink:0}}>
+        {step==="writeback"?<div style={{fontSize:11,color:"#1565C0",textAlign:"center",padding:4}}>Writing corrected codes back to EHR...</div>
+        :allCorrected?<button onClick={applyWriteback} style={{width:"100%",background:"#006B3F",color:"white",border:"none",borderRadius:7,padding:"8px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Apply corrections &amp; write back to EHR</button>
+        :<div style={{fontSize:10.5,color:"#94A3B8",textAlign:"center"}}>Select supportive codes for all flagged tests to continue</div>}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:7,fontSize:8.5,color:"#94A3B8"}}>
+          <div style={{display:"flex",alignItems:"center",gap:3}}><H s={11}/> Terms of Service | Privacy Policy</div>
+          <span>Need help?</span>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+function App(){
+  const[v,setV]=useState("uc");
+  if(v==="ehr")return <EHR onBack={()=>setV("uc")}/>;
+  return <Overview go={()=>setV("ehr")}/>;
+}
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>

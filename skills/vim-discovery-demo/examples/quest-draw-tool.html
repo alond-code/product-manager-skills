@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quest Diagnostics × Vim Connect — Draw Tool Demo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,sans-serif}
+  .ehr-view{overflow:hidden;height:100vh}
+  textarea,button,input{font-family:inherit}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes panelSlide{from{transform:translateX(100%)}to{transform:translateX(0)}}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState}=React;
+const TB={"Gold SST":{color:"#D4A843",bg:"#FDF6E3"},"Lavender EDTA":{color:"#9B7CB8",bg:"#F3EFF8"},"Light Blue Citrate":{color:"#6BA3C7",bg:"#EBF4FA"},"Green Heparin":{color:"#5A9E6F",bg:"#EDF7F0"},"Red No Additive":{color:"#C75454",bg:"#FCEAEA"},"Gray Fluoride":{color:"#8C8C8C",bg:"#F0F0F0"}};
+const AT=[
+{name:"Comprehensive Metabolic Panel",code:"CMP",tube:"Gold SST",handling:["Allow to clot 30\u201360 minutes","Centrifuge to separate serum","Maintain at room temperature"],vol:"8\u201310 mL"},
+{name:"Lipid Panel",code:"LIPID",tube:"Gold SST",handling:["Allow to clot 30\u201360 minutes","Centrifuge to separate serum"],vol:"8\u201310 mL"},
+{name:"HbA1c",code:"HBA1C",tube:"Gold SST",handling:["Allow to clot 30\u201360 minutes"],vol:"3\u20135 mL"},
+{name:"Thyroid Panel (TSH, T3, T4)",code:"THYROID",tube:"Gold SST",handling:["Allow to clot 30\u201360 minutes","Centrifuge to separate serum"],vol:"8\u201310 mL"},
+{name:"Complete Blood Count",code:"CBC",tube:"Lavender EDTA",handling:["Invert 8\u201310 times to prevent clotting","Do not centrifuge","Maintain at room temperature"],vol:"3 mL"},
+{name:"Hemoglobin A1c (EDTA)",code:"HBA1CE",tube:"Lavender EDTA",handling:["Invert 8\u201310 times to prevent clotting"],vol:"3 mL"},
+{name:"ESR (Sed Rate)",code:"ESR",tube:"Lavender EDTA",handling:["Invert 8\u201310 times","Test within 4 hours of collection"],vol:"3 mL"},
+{name:"PT/INR",code:"PTINR",tube:"Light Blue Citrate",handling:["Fill tube to line \u2014 proper blood-to-additive ratio required","Invert 3\u20134 times gently","Deliver to lab within 4 hours"],vol:"2.7 mL"},
+{name:"PTT",code:"PTT",tube:"Light Blue Citrate",handling:["Fill tube to line \u2014 proper ratio required","Invert 3\u20134 times gently"],vol:"2.7 mL"},
+{name:"Arterial Blood Gas",code:"ABG",tube:"Green Heparin",handling:["Place on ice immediately after collection","Transport within 15 minutes","Protect from light"],vol:"3 mL"},
+{name:"Lactate",code:"LACT",tube:"Green Heparin",handling:["Place on ice immediately","Transport within 15 minutes","Do not use tourniquet"],vol:"3 mL"},
+{name:"Ammonia",code:"NH3",tube:"Green Heparin",handling:["Place on ice immediately","Transport within 15 minutes","Protect from light","Do not use tourniquet"],vol:"3 mL"},
+{name:"Basic Metabolic Panel",code:"BMP",tube:"Green Heparin",handling:["Invert 8\u201310 times to prevent clotting","Maintain at room temperature"],vol:"3\u20135 mL"},
+{name:"Blood Type & Screen",code:"TS",tube:"Red No Additive",handling:["Allow to clot 60 minutes","Label at bedside per protocol"],vol:"7 mL"},
+{name:"Glucose (fasting)",code:"GLU",tube:"Gray Fluoride",handling:["Invert 8\u201310 times to mix preservative","Centrifuge within 30 minutes"],vol:"3 mL"},
+{name:"Lactic Acid (plasma)",code:"LACP",tube:"Gray Fluoride",handling:["Place on cool packs","Centrifuge within 30 minutes","Patient should not clench fist during draw"],vol:"3 mL"},
+];
+const P={name:"Rosie Barker",dob:"04/06/1985",age:40,gender:"Female",ins:"Insurer name example",mid:"0000000",eid:"345231",mrn:"5762423"};
+
+function opt(sel){const m={};sel.forEach(t=>{if(!m[t.tube])m[t.tube]={tests:[],handling:new Set()};m[t.tube].tests.push(t);t.handling.forEach(h=>m[t.tube].handling.add(h))});return Object.entries(m).map(([tube,d])=>({tube,color:TB[tube].color,bg:TB[tube].bg,tests:d.tests,handling:[...d.handling]}))}
+function getTr(g){const r=new Set();g.forEach(x=>{if(x.handling.some(h=>h.toLowerCase().includes("ice")||h.toLowerCase().includes("cool")))r.add("Keep "+x.tube+" on ice or cool packs");if(x.handling.some(h=>h.toLowerCase().includes("light")))r.add("Protect "+x.tube+" from direct light");if(x.handling.some(h=>h.toLowerCase().includes("centrifuge")))r.add("Centrifuge applicable specimens per tube instructions");if(x.handling.some(h=>h.toLowerCase().includes("15 minutes")))r.add(x.tube+": transport to lab within 15 minutes");if(x.handling.some(h=>h.toLowerCase().includes("room temperature")))r.add("Maintain room-temperature specimens away from cool packs")});return[...r]}
+
+const H=({s})=><svg width={s||20} height={s||20} viewBox="0 0 24 24" fill="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#4FC3F7"/></svg>;
+const Q=({s})=><svg width={s||28} height={s||28} viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" fill="#006B3F"/><text x="14" y="18.5" textAnchor="middle" fill="white" fontSize="13" fontWeight="700" fontFamily="Georgia,serif">Q</text></svg>;
+const Tu=({color,size})=><svg width={size||20} height={size||20} viewBox="0 0 24 32" fill="none"><rect x="6" y="2" width="12" height="26" rx="4" fill={color} opacity=".85"/><rect x="6" y="2" width="12" height="26" rx="4" stroke={color} strokeWidth="1.5" fill="none"/><rect x="4" y="0" width="16" height="5" rx="2" fill={color}/></svg>;
+const Al=()=><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="#E65100"/><text x="8" y="11.5" textAnchor="middle" fill="white" fontSize="10" fontWeight="700">!</text></svg>;
+const Ch=()=><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="#2E7D32"/><path d="M5 8l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+const Ge=({s,c})=><svg width={s||20} height={s||20} viewBox="0 0 24 24" fill="none" stroke={c||"#64748B"} strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+
+function Overview({go}){
+  return <div style={{maxWidth:780,margin:"0 auto",padding:"40px 24px",fontFamily:"Georgia,serif"}}>
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:32}}>
+      <Q/><span style={{fontSize:13,fontWeight:600,color:"#006B3F",letterSpacing:1,textTransform:"uppercase"}}>Quest Diagnostics</span>
+      <span style={{color:"#CBD5E1",margin:"0 4px"}}>&times;</span>
+      <H/><span style={{fontSize:13,fontWeight:600,color:"#0288D1",letterSpacing:1,textTransform:"uppercase"}}>Vim Connect</span>
+    </div>
+    <div style={{background:"#0F172A",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:36}}>
+      <div>
+        <div style={{fontSize:18,fontWeight:700,color:"white",marginBottom:4}}>Interactive Demo</div>
+        <div style={{fontSize:13,color:"#94A3B8",fontFamily:"system-ui,sans-serif"}}>Walk through both sides: the provider placing orders, then the collector receiving guidance.</div>
+      </div>
+      <button onClick={go} style={{background:"#006B3F",color:"white",border:"none",borderRadius:8,padding:"12px 28px",fontSize:14,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"system-ui,sans-serif"}}>Launch Demo &rarr;</button>
+    </div>
+    <h1 style={{fontSize:32,fontWeight:700,color:"#0F172A",lineHeight:1.25,margin:"0 0 8px"}}>Draw Tool &mdash; Specimen Collection Guidance</h1>
+    <p style={{fontSize:17,color:"#475569",lineHeight:1.65,margin:"0 0 36px"}}>A Vim Connect application that surfaces intuitive blood draw instructions to the MA, nurse, or phlebotomist at the point of collection &mdash; reducing specimen errors and patient re-draws.</p>
+    <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"20px 24px",marginBottom:36}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#C2410C",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>The Problem</div>
+      <p style={{fontSize:15,color:"#7C2D12",lineHeight:1.6,margin:0}}>~50% of Quest clients collect specimens in-office. These sites experience <strong>2&times; the specimen-related issues</strong> &mdash; wrong container, improper handling, incorrect temperature, wrong volume &mdash; compared to Quest PSCs. The ordering provider and the person performing the blood draw are almost always different people. Current EHR workflows bury collection guidance behind multiple clicks in SMART on FHIR apps, so the MA or nurse doing the draw often has no easy access to specimen-specific instructions.</p>
+    </div>
+    <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:10,padding:"20px 24px",marginBottom:36}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#166534",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>The Solution</div>
+      <p style={{fontSize:15,color:"#14532D",lineHeight:1.6,margin:0}}>The <strong>Draw Tool</strong> runs through the Vim Connect ribbon &mdash; always docked and accessible. When the MA, nurse, or phlebotomist opens a patient record that has active lab orders, Vim's smart launch technology identifies the relevant orders and sends a push notification alerting them that collection guidelines are available. They can then interact with the Vim overlay to view Quest's UI: <strong>tube optimization</strong> (e.g., 10 tests &rarr; 5 tubes), color-coded Vacuette&reg; tube types, handling instructions, and transport requirements.</p>
+    </div>
+    <h2 style={{fontSize:22,fontWeight:700,color:"#0F172A",margin:"0 0 16px"}}>How It Works</h2>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:36}}>
+      {[{s:"1",t:"Provider Places Orders",d:"The ordering provider completes lab orders during the encounter (e.g., CMP, CBC, Lipid Panel, ABG). The provider finishes with the patient."},{s:"2",t:"Collector Opens Patient Record",d:"The MA, nurse, or phlebotomist opens the patient\u2019s chart in the EHR to perform the blood draw. Vim\u2019s smart launch technology detects the patient context and identifies active lab orders."},{s:"3",t:"Vim Surfaces Guidance",d:"A push notification alerts the collector that specimen collection guidelines are available. They can interact with the Vim overlay to access Quest\u2019s Draw Tool UI."},{s:"4",t:"Tube Optimization &amp; Collection",d:"The collector sees tube-by-tube instructions: tests consolidated per Vacuette\u00ae tube, inversions, handling, temperature, volume, and transport \u2014 sourced from Quest\u2019s specimen collection protocols."}].map(i=>
+        <div key={i.s} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,padding:"18px 20px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:"#006B3F",color:"white",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,fontFamily:"system-ui"}}>{i.s}</div>
+            <div style={{fontSize:15,fontWeight:700,color:"#0F172A"}}>{i.t}</div>
+          </div>
+          <p style={{fontSize:13.5,color:"#475569",lineHeight:1.55,margin:0,fontFamily:"system-ui,sans-serif"}}>{i.d}</p>
+        </div>)}
+    </div>
+    <h2 style={{fontSize:22,fontWeight:700,color:"#0F172A",margin:"0 0 16px"}}>Why Vim Connect</h2>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:40}}>
+      {[{t:"Right Person, Right Time",d:"Guidance surfaces for the collector doing the draw \u2014 not the ordering provider. The trigger is patient context + active orders, so the notification appears exactly when it\u2019s needed."},{t:"No Manual Launch",d:"Unlike SMART on FHIR apps buried 2\u20133 clicks deep, the Draw Tool is always available in the Vim Connect ribbon. The collector doesn\u2019t need to know to look for it."},{t:"Same Experience, Any EHR",d:"Vim Connect handles the EHR data pipe. Quest builds the UI once using the Vim SDK and it works across EHRs (Athena, ECW, Practice Fusion) \u2014 same experience for every collector."}].map((i,idx)=>
+        <div key={idx} style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:10,padding:"16px 18px"}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#1E40AF",marginBottom:6}}>{i.t}</div>
+          <p style={{fontSize:12.5,color:"#1E3A5F",lineHeight:1.5,margin:0,fontFamily:"system-ui,sans-serif"}}>{i.d}</p>
+        </div>)}
+    </div>
+  </div>;
+}
+
+function PB({phase}){
+  return <div style={{background:phase===1?"#EFF6FF":"#F0FDF4",borderBottom:"1px solid "+(phase===1?"#BFDBFE":"#BBF7D0"),padding:"8px 18px",display:"flex",alignItems:"center",gap:12}}>
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <div style={{width:22,height:22,borderRadius:"50%",background:phase===1?"#1565C0":"#94A3B8",color:"white",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700}}>1</div>
+      <span style={{fontSize:11,fontWeight:phase===1?700:400,color:phase===1?"#1565C0":"#94A3B8"}}>Provider Places Orders</span>
+    </div>
+    <div style={{width:24,height:1,background:"#CBD5E1"}}/>
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <div style={{width:22,height:22,borderRadius:"50%",background:phase===2?"#2E7D32":"#94A3B8",color:"white",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700}}>2</div>
+      <span style={{fontSize:11,fontWeight:phase===2?700:400,color:phase===2?"#2E7D32":"#94A3B8"}}>MA / Nurse Opens Patient Record</span>
+    </div>
+  </div>;
+}
+
+function EHR({onBack}){
+  const[phase,setPhase]=useState(1);
+  const[sel,setSel]=useState([]);
+  const[ordered,setOrdered]=useState(false);
+  const[notif,setNotif]=useState(false);
+  const[panel,setPanel]=useState(false);
+  const[acked,setAcked]=useState(false);
+  const[tab,setTab]=useState("Orders");
+  const[q,setQ]=useState("");
+  const[badge,setBadge]=useState(0);
+
+  const filt=AT.filter(t=>t.name.toLowerCase().includes(q.toLowerCase())||t.code.toLowerCase().includes(q.toLowerCase()));
+  const groups=opt(sel);
+  const transport=getTr(groups);
+
+  const place=()=>{if(!sel.length)return;setOrdered(true);setTab("Orders")};
+  const toCollector=()=>{setPhase(2);setTab("Active orders");setTimeout(()=>{setBadge(sel.length);setTimeout(()=>setNotif(true),500)},1000)};
+  const viewG=()=>{setNotif(false);setPanel(true)};
+  const reset=()=>{setPhase(1);setSel([]);setOrdered(false);setNotif(false);setPanel(false);setAcked(false);setTab("Orders");setQ("");setBadge(0)};
+  const tog=t=>setSel(p=>p.find(x=>x.code===t.code)?p.filter(x=>x.code!==t.code):[...p,t]);
+
+  const tabs=phase===1?["Subjective","Objective","Assessments","Plan","Billing info","Orders"]:["Patient chart","Active orders","Vitals","Notes"];
+  const user=phase===1?{role:"Ordering Provider",name:"Dr. John Smith",icon:"\uD83E\uDE7A"}:{role:"MA / Phlebotomist",name:"Sarah Chen, MA",icon:"\uD83D\uDC89"};
+
+  return <div className="ehr-view" style={{display:"flex",fontFamily:"system-ui,-apple-system,sans-serif",position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",top:6,left:6,fontSize:11,color:"#2AA2CF",fontWeight:500,zIndex:200}}>Vim Hub classic size</div>
+
+    <div style={{width:150,background:"linear-gradient(180deg,#0A3D5C 0%,#0C2340 100%)",display:"flex",flexDirection:"column",flexShrink:0,paddingTop:26}}>
+      <div style={{padding:"10px 14px 18px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:"50%",background:"#4FC3F7"}}></div><span style={{fontSize:16,fontWeight:800,color:"#4FC3F7"}}>eHealth</span></div>
+        <div style={{fontSize:8,color:"#64B5F6",opacity:.7,letterSpacing:1.5,textTransform:"uppercase",marginTop:1,marginLeft:12}}>Sandbox EHR</div>
+      </div>
+      {["\uD83D\uDCC5 Calendar","\uD83D\uDC65 Patients","\uD83D\uDCCA Reports"].map(x=><div key={x} style={{padding:"9px 14px",color:"rgba(255,255,255,0.5)",fontSize:12.5,cursor:"pointer"}}>{x}</div>)}
+      <div style={{padding:"9px 14px",color:"rgba(255,255,255,0.5)",fontSize:12.5,cursor:"pointer",marginTop:"auto"}}>{"\uD83D\uDCD8"} SDK docs &rarr;</div>
+      <div style={{padding:"10px 14px 14px",color:"rgba(255,255,255,0.4)",fontSize:11.5,display:"flex",alignItems:"center",gap:5,borderTop:"1px solid rgba(255,255,255,0.06)"}}><Ge s={15} c="rgba(255,255,255,0.4)"/> Vim settings</div>
+    </div>
+
+    <div style={{flex:1,background:"#F8FAFC",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <PB phase={phase}/>
+      <div style={{background:"white",borderBottom:"1px solid #E2E8F0",padding:"6px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:14}}>{user.icon}</span>
+          <div><span style={{fontSize:11.5,fontWeight:600,color:"#0F172A"}}>{user.name}</span><span style={{fontSize:10,color:"#94A3B8",marginLeft:6}}>{user.role}</span></div>
+        </div>
+        <div style={{display:"flex",gap:5}}>
+          <button onClick={onBack} style={{background:"none",border:"1px solid #CBD5E1",borderRadius:5,padding:"3px 10px",fontSize:10,color:"#64748B",cursor:"pointer"}}>&larr; Use Case</button>
+          <button onClick={reset} style={{background:"none",border:"1px solid #CBD5E1",borderRadius:5,padding:"3px 10px",fontSize:10,color:"#64748B",cursor:"pointer"}}>Reset</button>
+        </div>
+      </div>
+
+      <div style={{background:"white",borderBottom:"1px solid #E2E8F0",padding:"10px 18px",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#E0F2F1,#B2DFDB)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"#006B3F",border:"2px solid #E0F2F1"}}>RB</div>
+        <div>
+          <div style={{fontSize:16,fontWeight:700,color:"#0F172A"}}>{P.name}</div>
+          <div style={{fontSize:10,color:"#64748B"}}>DoB: <strong>{P.dob}</strong>, Gender: <strong>{P.gender}</strong>, MRN: <strong>{P.mrn}</strong></div>
+        </div>
+      </div>
+
+      <div style={{padding:"10px 18px 0",background:"white"}}>
+        <div style={{fontSize:15,fontWeight:700,color:"#1565C0",textDecoration:"underline",marginBottom:8,cursor:"pointer"}}>{phase===1?"Encounters / Aug 8, 2024":"Patient Record \u2014 "+P.name}</div>
+        <div style={{display:"flex",gap:0,borderBottom:"2px solid #E2E8F0"}}>
+          {tabs.map(t=><button key={t} onClick={()=>setTab(t)} style={{background:"none",border:"none",padding:"6px 10px",fontSize:11,fontWeight:tab===t?600:400,color:tab===t?"#0C2340":"#64748B",cursor:"pointer",borderBottom:tab===t?"2.5px solid #1565C0":"2.5px solid transparent",marginBottom:-2}}>{t}</button>)}
+        </div>
+      </div>
+
+      <div style={{flex:1,overflow:"auto",padding:"14px 18px"}}>
+        {phase===1&&(tab==="Orders"?<div style={{maxWidth:560}}>
+          {!ordered?<>
+            <div style={{fontSize:12,fontWeight:600,color:"#0F172A",marginBottom:8}}>Lab Orders</div>
+            <div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",marginBottom:12}}>
+              <input type="text" placeholder="Search tests (e.g., CMP, CBC, Lipid)..." value={q} onChange={e=>setQ(e.target.value)} style={{width:"100%",border:"none",borderBottom:"1px solid #E2E8F0",padding:"8px 11px",fontSize:11,outline:"none",borderRadius:"8px 8px 0 0",boxSizing:"border-box"}}/>
+              <div style={{maxHeight:200,overflow:"auto"}}>
+                {filt.map(t=>{const s=sel.find(x=>x.code===t.code);return <div key={t.code} onClick={()=>tog(t)} style={{padding:"6px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",borderBottom:"1px solid #F1F5F9",background:s?"#F0FDF4":"white"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7}}>
+                    <div style={{width:14,height:14,borderRadius:3,border:s?"none":"1.5px solid #CBD5E1",background:s?"#006B3F":"white",display:"flex",alignItems:"center",justifyContent:"center"}}>{s&&<svg width="8" height="8" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round"/></svg>}</div>
+                    <div><div style={{fontSize:11,fontWeight:500,color:"#0F172A"}}>{t.name}</div><div style={{fontSize:9,color:"#94A3B8"}}>{t.code} &middot; {t.vol}</div></div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:3}}><Tu color={TB[t.tube].color} size={10}/><span style={{fontSize:9,color:"#64748B"}}>{t.tube}</span></div>
+                </div>})}
+              </div>
+            </div>
+            {sel.length>0&&<div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:7,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontSize:11,color:"#166534"}}><strong>{sel.length}</strong> tests &rarr; <strong>{opt(sel).length}</strong> tubes</span>
+              <button onClick={place} style={{background:"#006B3F",color:"white",border:"none",borderRadius:5,padding:"6px 16px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Place Order</button>
+            </div>}
+          </>:<div>
+            <div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",padding:"14px 18px",marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><Ch/><span style={{fontSize:12,fontWeight:600,color:"#166534"}}>Order Placed Successfully</span></div>
+              <div style={{fontSize:11,color:"#475569"}}><strong>{sel.length}</strong> lab tests ordered for {P.name}.</div>
+              <div style={{marginTop:6,display:"flex",flexWrap:"wrap",gap:4}}>{sel.map(t=><span key={t.code} style={{background:"#F1F5F9",borderRadius:3,padding:"2px 6px",fontSize:9,color:"#475569"}}>{t.name}</span>)}</div>
+            </div>
+            <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:8,padding:"14px 18px",textAlign:"center"}}>
+              <div style={{fontSize:12,color:"#1E40AF",marginBottom:4}}>Provider is done. The MA or nurse will now open the patient record to perform the blood draw.</div>
+              <button onClick={toCollector} style={{background:"#1565C0",color:"white",border:"none",borderRadius:6,padding:"8px 24px",fontSize:12,fontWeight:600,cursor:"pointer",marginTop:6}}>Switch to MA / Nurse view &rarr;</button>
+            </div>
+          </div>}
+        </div>:<div style={{maxWidth:560}}>
+          {["General notes","Chief complaint","History of present illness notes"].map(f=><div key={f} style={{marginBottom:12}}>
+            <label style={{fontSize:11,fontWeight:500,color:"#334155",display:"block",marginBottom:2}}>{f}</label>
+            <textarea style={{width:"100%",border:"1px solid #E2E8F0",borderRadius:5,padding:8,fontSize:11,minHeight:50,resize:"vertical",outline:"none",boxSizing:"border-box"}} placeholder="Enter notes"></textarea>
+          </div>)}
+        </div>)}
+
+        {phase===2&&<div style={{maxWidth:560}}>
+          {tab==="Active orders"?<div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#0F172A",marginBottom:10}}>Active Lab Orders for {P.name}</div>
+            <div style={{fontSize:10.5,color:"#64748B",marginBottom:10}}>Ordered by Dr. John Smith &middot; Aug 8, 2024 &middot; Status: <strong style={{color:"#E65100"}}>Pending collection</strong></div>
+            {sel.map(t=><div key={t.code} style={{padding:"6px 0",borderBottom:"1px solid #F1F5F9",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}><Tu color={TB[t.tube].color} size={10}/><span style={{fontSize:11,color:"#0F172A"}}>{t.name}</span></div>
+              <span style={{fontSize:9,color:"#94A3B8"}}>{t.code}</span>
+            </div>)}
+          </div>:tab==="Patient chart"?<div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#0F172A",marginBottom:8}}>Patient Summary</div>
+            <div style={{fontSize:11,color:"#475569",lineHeight:1.7}}>
+              <div><strong>Name:</strong> {P.name}</div><div><strong>DoB:</strong> {P.dob} ({P.age} yr)</div><div><strong>Gender:</strong> {P.gender}</div><div><strong>MRN:</strong> {P.mrn}</div>
+              <div style={{marginTop:8,padding:"8px 10px",background:"#FFF7ED",borderRadius:6,border:"1px solid #FED7AA"}}><strong style={{color:"#C2410C"}}>{sel.length} active lab orders</strong> <span style={{color:"#92400E"}}>pending collection</span></div>
+            </div>
+          </div>:<div style={{background:"white",borderRadius:8,border:"1px solid #E2E8F0",padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#0F172A",marginBottom:8}}>{tab}</div>
+            <div style={{fontSize:11,color:"#94A3B8"}}>No data to display in demo.</div>
+          </div>}
+        </div>}
+      </div>
+    </div>
+
+    <div style={{width:38,background:"#F1F5F9",borderLeft:"1px solid #E2E8F0",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:8,gap:5,flexShrink:0,zIndex:20}}>
+      <div style={{position:"relative",cursor:phase===2?"pointer":"default",opacity:phase===2?1:.35}} onClick={()=>{if(phase===2&&!panel&&badge>0)viewG()}}>
+        <H s={17}/>
+        {badge>0&&!panel&&<div style={{position:"absolute",top:-4,right:-6,width:14,height:14,borderRadius:"50%",background:"#E65100",color:"white",fontSize:8,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",animation:"pulse 1.5s ease infinite"}}>{badge>9?"9+":badge}</div>}
+      </div>
+      <div style={{cursor:phase===2?"pointer":"default",opacity:phase===2?.6:.2}} onClick={()=>{if(phase===2&&!panel&&badge>0)viewG()}}><Q s={22}/></div>
+      <div style={{marginTop:"auto",marginBottom:8,opacity:.4}}><Ge s={16}/></div>
+    </div>
+
+    {notif&&phase===2&&<div style={{position:"absolute",top:90,right:48,width:265,background:"white",borderRadius:9,boxShadow:"0 8px 30px rgba(0,0,0,.15)",border:"1px solid #E2E8F0",padding:"12px 14px",zIndex:100,animation:"slideIn .35s ease"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}>
+        <div style={{display:"flex",alignItems:"center",gap:5}}><Q s={20}/><span style={{fontSize:11,fontWeight:700,color:"#0F172A"}}>Quest Diagnostics - Draw Tool</span></div>
+        <button onClick={()=>setNotif(false)} style={{background:"none",border:"none",fontSize:15,color:"#94A3B8",cursor:"pointer",lineHeight:1,padding:0}}>&times;</button>
+      </div>
+      <p style={{fontSize:10.5,color:"#475569",lineHeight:1.5,margin:"0 0 8px"}}>This patient has <strong>{sel.length} active lab orders</strong> pending collection. Specimen collection guidelines are available.</p>
+      <button onClick={viewG} style={{background:"#0C2340",color:"white",border:"none",borderRadius:5,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",width:"100%"}}>View collection guidance</button>
+    </div>}
+
+    {panel&&<div style={{position:"absolute",top:0,right:38,width:300,height:"100%",background:"white",boxShadow:"-4px 0 20px rgba(0,0,0,.1)",zIndex:50,display:"flex",flexDirection:"column",animation:"panelSlide .3s ease"}}>
+      <div style={{padding:"10px 14px",borderBottom:"1px solid #E2E8F0",flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+          <div style={{fontSize:11.5,color:"#64748B"}}>{P.name} / {P.dob} / {P.age} yr</div>
+          <button onClick={()=>setPanel(false)} style={{background:"none",border:"none",fontSize:15,color:"#94A3B8",cursor:"pointer"}}>&times;</button>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3}}><Q s={22}/><div style={{fontSize:8.5,color:"#64748B",textTransform:"uppercase",letterSpacing:.5}}>Quest Diagnostics</div></div>
+        <div style={{fontSize:13.5,fontWeight:700,color:"#0F172A"}}>Blood Draw Guidance</div>
+        <div style={{fontSize:10,color:"#64748B",marginTop:1}}>{P.name} &middot; DoB: {P.dob} &middot; {P.gender}</div>
+      </div>
+      <div style={{flex:1,overflow:"auto"}}>
+        <div style={{background:"#E8F5E9",padding:"7px 14px",display:"flex",alignItems:"center",gap:5}}>
+          <Ch/><span style={{fontSize:11.5,fontWeight:600,color:"#1B5E20"}}>Tube Plan</span>
+          <span style={{fontSize:10.5,color:"#2E7D32",marginLeft:"auto"}}>{sel.length} tests &rarr; {groups.length} tubes</span>
+        </div>
+        <div style={{padding:"10px 14px 4px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:.5,marginBottom:7}}>Collection Order</div>
+          {groups.map((g,i)=><div key={g.tube} style={{marginBottom:10,background:g.bg,borderRadius:7,padding:"9px 10px",border:"1px solid "+g.color+"22"}}>
+            <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}>
+              <div style={{width:18,height:18,borderRadius:"50%",background:g.color,color:"white",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9.5,fontWeight:700}}>{i+1}</div>
+              <Tu color={g.color} size={14}/><span style={{fontSize:12,fontWeight:700,color:"#0F172A"}}>{g.tube}</span>
+            </div>
+            {g.tests.map(t=><div key={t.code} style={{fontSize:10.5,color:"#334155",padding:"1px 0 1px 24px"}}>&middot; {t.name}</div>)}
+            <div style={{borderTop:"1px dashed "+g.color+"44",marginTop:5,paddingTop:5,paddingLeft:24}}>
+              {g.handling.map((h,j)=><div key={j} style={{fontSize:10,color:h.toLowerCase().includes("ice")||h.toLowerCase().includes("immediately")||h.toLowerCase().includes("light")||h.toLowerCase().includes("tourniquet")?"#C62828":"#E65100",padding:"1px 0",display:"flex",alignItems:"flex-start",gap:3}}>
+                <span style={{flexShrink:0,marginTop:1}}><Al/></span><span>{h}</span>
+              </div>)}
+            </div>
+          </div>)}
+        </div>
+        {transport.length>0&&<div style={{margin:"0 14px 10px",background:"#FFF3E0",borderRadius:7,padding:"9px 10px",border:"1px solid #FFE0B2"}}>
+          <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:5}}><Al/><span style={{fontSize:11,fontWeight:700,color:"#E65100"}}>Transport Requirements</span></div>
+          {transport.map((r,i)=><div key={i} style={{fontSize:10,color:"#BF360C",padding:"1px 0 1px 16px"}}>&middot; {r}</div>)}
+        </div>}
+      </div>
+      <div style={{borderTop:"1px solid #E2E8F0",padding:"9px 14px",flexShrink:0}}>
+        {!acked?<button onClick={()=>setAcked(true)} style={{width:"100%",background:"#006B3F",color:"white",border:"none",borderRadius:7,padding:"8px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Acknowledged</button>
+        :<div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}><Ch/><span style={{fontSize:11.5,fontWeight:600,color:"#2E7D32"}}>Collection guidance acknowledged</span></div>}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:7,fontSize:8.5,color:"#94A3B8"}}>
+          <div style={{display:"flex",alignItems:"center",gap:3}}><H s={11}/> Terms of Service | Privacy Policy</div>
+          <span>Need help?</span>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+function App(){
+  const[v,setV]=useState("uc");
+  if(v==="ehr")return <EHR onBack={()=>setV("uc")}/>;
+  return <Overview go={()=>setV("ehr")}/>;
+}
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
